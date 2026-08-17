@@ -164,11 +164,11 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 | `claude/fix-deploy-docs-init-admin` | Deploy doc fixes (§7) | **Merged** via PR #90 |
 | `claude/end-load-completion-packet` | End Load / Completion Packet (§13) + Email Helper review package (§14), D3/D5 | **Merged** via PR #92 |
 | `claude/freight-core-defect-fixes` | 9 defect fixes (§1) + 2 adapter boundaries (§4); finding #5 attempted and reverted (§1, §2) | **Merged** via PR #91 |
-| `claude/driver-load-search` | Load Search / Operational Retrieval, D6/D9 (§12) | Pushed. **PR #89 open, subscribed** — not part of this merge authorization, still on the pre-#90 `main` (`48b953f`); now several commits behind after #90/#92/#91 merged. CI was last green before those merges; `mergeable_state` needs a fresh check (and likely `update_pull_request_branch`) before it can merge. Left untouched pending explicit instruction. |
+| `claude/driver-load-search` | Load Search / Operational Retrieval, D6/D9 (§12) | **Merged** via PR #89 — went `behind` after #90/#92/#91 merged ahead of it, updated with the latest `main` via `update_pull_request_branch`, re-ran CI green, merged |
 
-**`main` is now at `e0ccc75`** (PR #88 → #90 → #92 → #91, in that order; #92 and #91 each needed one `update_pull_request_branch` round after the merge immediately before them, since GitHub's branch protection requires a PR to be up to date with `main` — not just green — before it merges. No conflicts arose in any round; the four merged branches touched disjoint files.
+**`main` is now at `cc6c467`** (PR #88 → #90 → #92 → #91 → #89, in that order). Every PR after the first in this run needed one `update_pull_request_branch` round after the merge immediately before it, since GitHub's branch protection requires a PR to be up to date with `main` — not just green — before it merges. No conflicts arose in any round; all five merged branches touched disjoint files. All five branches from this engagement are now merged; none remain open.
 
-**PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green (all of #90/#91/#92 authorized and merged this pass) — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
+**PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
 ---
 
