@@ -15,7 +15,7 @@ Later items depend on earlier ones landing first. Do not promote out of order.
 3. Trip Card *(depends on nothing new; adapts existing Dispatch objects)*
 4. Completion Packet *(depends on Trip Card for BOL/POD evidence refs)*
 5. Email Helper boundary *(depends on nothing new; wraps existing `dispatch/notifications.py`)*
-6. HOLD 3-hour delete rule *(depends on Sandbox's existing `source_type` field for freight/SAM scoping — highest risk, do not rush)*
+6. HOLD 3-hour delete rule *(retention doctrine question resolved — see sign-off log in item 4; SAM/freight scoping remains the open, do-not-rush risk)*
 7. Communication Card *(depends on Library's real asset governance, Publisher's existing action vocabulary)*
 8. Archive final record flow *(depends on Trip Card + Completion Packet being promoted)*
 9. Operations Cockpit queue data *(depends on 3, 4, 6, 7 — promote last; it has nothing real to display before then)*
@@ -75,18 +75,27 @@ Later items depend on earlier ones landing first. Do not promote out of order.
 
 ## 4. HOLD 3-hour delete rule
 
+> **Sign-off status: RESOLVED.** See "HOLD sign-off log" below — this section was updated after Mike's ruling. Delete-on-expiry is confirmed as originally built; no code change was required.
+
 | | |
 |---|---|
 | **Claude-3 source** | `dispatch_build/sandbox.py` (`run_hold_sweep`, `HOLD_HOURS`), `dispatch_build/models.py` (`SandboxStatus.RUNNER_UP`/`EXPIRED`) |
 | **Dispatch target** | `portal/models/sandbox.py` (11-state lifecycle; `EXPIRED` exists as a static status only) |
 | **Target exists?** | Partially — the status value exists, the timer and deletion behavior do not. The only place a literal `SANDBOX_HOLD_HOURS` constant exists anywhere is the abandoned, superseded `claude/l2-cos-dispatch-refactor` branch, and even there it never deletes |
 | **Port / adapt / rename / merge / skip** | **ADAPT.** Port the sweep *logic* (start clock on commit, delete-not-archive at expiry) into `portal/models/sandbox.py`, wired to its real 11-state enum — do not port Claude-3's simplified 4-state enum. Scope the sweep to freight-sourced entries only (`sid` prefix pattern `SBX-DISPATCH-*`, per the existing `sid = f"SBX-{source_type}-{source_id}"` convention), unless Mike explicitly approves extending it to SAM entries. |
-| **Risks** | **Highest risk item in this plan.** (1) Dispatch's Sandbox is shared infrastructure serving both SAM and freight opportunities — an unscoped sweep would silently delete SAM/contract sandbox entries, which is the exact contamination this plan exists to prevent. (2) Delete-without-archive directly conflicts with the "nothing deleted without Mike approval" principle documented elsewhere in both Dispatch and Jules — this was flagged as an unresolved governance tension in the earlier architectural review and is not resolved by this promotion; it needs Mike's explicit sign-off before this specific component ships, separate from approving the rest of the plan. |
+| **Risks** | (1) **Still live, not resolved by the doctrine ruling below:** Dispatch's Sandbox is shared infrastructure serving both SAM and freight opportunities — an unscoped sweep would silently delete SAM/contract sandbox entries, which is the exact contamination this plan exists to prevent. Freight-only scoping remains a hard requirement for promotion, enforced in code and tested, not just documented. (2) **Resolved:** delete-without-archive does *not* conflict with the "nothing deleted without Mike approval" principle, because that principle governs Dispatch *records* (created by ingestion or Publisher), and a Sandbox/HOLD entry is a decision-support artifact, not a record — see sign-off log. |
 | **Required tests** | Sweep only ever touches freight-sourced entries, verified against a mixed sandbox containing both SAM and freight entries in the same test. The three HOLD timing tests ported directly from Claude-3 (not-yet-expired / at-expiry / deleted-not-archived). |
 | **Dependencies** | `portal/models/sandbox.py`, the existing `source_type` field for freight/SAM discrimination |
-| **SAM/CIN contamination** | **Live risk, not theoretical, unless scoping is enforced in code and tested, not just documented** |
+| **SAM/CIN contamination** | **Live risk, not theoretical, unless scoping is enforced in code and tested, not just documented** — unaffected by the sign-off below, which addressed retention doctrine, not program scoping |
 | **Manager touched** | No |
 | **External systems** | N/A |
+
+### HOLD sign-off log
+
+- **First answer (retracted):** an initial sign-off request returned "Approve timer, not delete" — keep the 3-hour clock, change expiry from delete to a retained `EXPIRED` status. Before any code or doc changed to match it, the requester flagged this as a misclick ("stop" / "miss key no further") and withdrew it. No implementation work was done against this answer; it is recorded here only so the retraction is visible, not silently erased.
+- **Governing ruling (current):** *"Sandbox is a Decision Workspace, not a Records Repository. Loads presented in HOLD are decision-support artifacts, not business records. A Dispatch record is created only by ingestion or Publisher creation. Therefore retention doctrine applicable to Library and Archive does not automatically apply to Sandbox objects. The HOLD system exists solely to provide a short operator decision window and may sweep stale candidates to prevent search stacking and cognitive overload."*
+- **Effect:** this doesn't override the no-delete-without-Mike principle for a special case — it establishes that principle was never in scope for Sandbox/HOLD entries in the first place, since they aren't records. The apparent doctrine conflict flagged in the original architectural review is dissolved by this distinction, not overruled by it. `dispatch_build/sandbox.py`'s delete-on-expiry behavior, as originally built, is confirmed correct and requires no change.
+- **What this ruling does not settle:** the SAM/freight scoping requirement for promoting HOLD into Dispatch's real, shared Sandbox model. That risk is independent of retention doctrine and remains a hard requirement above.
 
 ---
 
@@ -183,6 +192,6 @@ Later items depend on earlier ones landing first. Do not promote out of order.
 
 **External systems** — Every component that talks to an external system (Email Helper → Outlook, Accounting → QuickBooks-or-equivalent) stays adapter-based or mocked through this promotion. No live external integration is part of this plan; swapping a mock for a live transport is explicitly future work, out of scope here.
 
-**What this plan does not do** — It does not touch a single file in `jax1313-outlook/Dispatch`. It does not resolve the HOLD-vs-no-delete-without-Mike doctrine conflict (flagged, not decided, in item 4). It does not merge, extend, or otherwise interact with SAM/CIN-Lite. It does not resurrect Manager.
+**What this plan does not do** — It does not touch a single file in `jax1313-outlook/Dispatch`. It does not settle HOLD's SAM/freight scoping requirement for the shared Sandbox model (still open, item 4). It does not merge, extend, or otherwise interact with SAM/CIN-Lite. It does not resurrect Manager.
 
 **Definition of done for this document**: satisfied — every mandatory component has a named Claude-3 source, a named Dispatch target, an existence check, a port/adapt/rename/merge/skip decision, risks, required tests, dependencies, and explicit SAM/Manager/external-system status. Execution against this plan is a separate, future action requiring Mike's approval.
