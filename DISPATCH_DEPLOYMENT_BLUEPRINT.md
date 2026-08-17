@@ -161,12 +161,12 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 | Branch | Contents | Status |
 |---|---|---|
 | `claude/sandbox-source-type-filtering-hold` | HOLD/Sandbox SAM-freight scoping | **Merged** via PR #88 (explicitly requested and approved earlier in this engagement) |
-| `claude/fix-deploy-docs-init-admin` | Deploy doc fixes (§7) | Pushed. **PR #90 opened and subscribed to activity** — open, CI running, not merged |
-| `claude/freight-core-defect-fixes` | 9 defect fixes (§1) + 2 adapter boundaries (§4); finding #5 attempted and reverted (§1, §2) | Pushed. **PR #91 opened and subscribed to activity** — open, CI running, not merged |
+| `claude/fix-deploy-docs-init-admin` | Deploy doc fixes (§7) | **Merged** via PR #90 (explicitly requested and approved) — `main` is now at `3535e5b` |
+| `claude/freight-core-defect-fixes` | 9 defect fixes (§1) + 2 adapter boundaries (§4); finding #5 attempted and reverted (§1, §2) | Pushed. **PR #91 opened, subscribed, approved for merge** — branch was `behind` after #90 merged (branch protection requires up-to-date-with-base before merging); updated with latest `main`, new CI run in progress, will merge once green |
 | `claude/driver-load-search` | Load Search / Operational Retrieval, D6/D9 (§12) | Pushed. **PR #89 opened and subscribed to activity** — open, CI green (6/6 checks, py3.11/3.12/3.13), no review comments, not merged |
-| `claude/end-load-completion-packet` | End Load / Completion Packet (§13) + Email Helper review package (§14), D3/D5 | Pushed. **PR #92 opened and subscribed to activity** — open, CI running, not merged |
+| `claude/end-load-completion-packet` | End Load / Completion Packet (§13) + Email Helper review package (§14), D3/D5 | Pushed. **PR #92 opened, subscribed, approved for merge** — same `behind`-after-#90 situation as #91; updated with latest `main`, new CI run in progress, will merge once green |
 
-**PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in the earlier phases of this engagement. Still never merged without explicit approval.
+**PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in the earlier phases of this engagement. Merges into `main` now happen automatically once CI is green, per explicit per-PR authorization (#90/#91/#92) — still never merged without that explicit approval, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
 ---
 
