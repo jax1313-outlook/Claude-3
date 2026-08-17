@@ -170,6 +170,8 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 
 **Post-merge full-suite confirmation, run directly against `main` @ `cc6c467`** (not just each PR's own CI in isolation): **2,469/2,469 pass, exit 0.** Reconciles exactly against the running baseline — 2,414 (original) + 6 (Load Search, §12) + 20 (defect fixes + boundaries, §1/§4) + 13 (Completion Packet, §13) + 16 (Email Helper, §14) = 2,469 — confirming no integration issue between any of the five independently-developed branches now that they all share one history.
 
+**New branch since that merge round:** `claude/d10-email-archive-handling` — D10 Email Archive Handling (§15). Pushed. **PR #93 opened and subscribed**, not merged yet.
+
 **PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
 ---
@@ -203,7 +205,7 @@ D1-D6, D8-D10 are now resolved (§6); this sequence reflects that. D7 (archive p
 3. **Update `_VALID_TRANSITIONS`** (D1) to add `"cancelled": {"archived"}`, then flip `archive_load()`'s existing non-blocking consistency check (§1) to a real, enforced gate.
 4. **Extend the `Load` model and commit-time validation** (D2) to carry broker/customer contact fields and treat Rate Confirmation/POD/Invoice/Completion Packet as expected-eventually on a committed load.
 5. **~~Build~~ End Load deterministic workflow, Completion Packet concept, and Email Helper review package — done, see §13/§14.** Completion Packet assembly, the deterministic End Load trigger, Publisher routing, and the Email Helper draft/edit/human-gated-submit step are all built and tested. Still open: D10 (below).
-6. **Build Email Archive Handling** (D10) once the above lands — it's the terminal step of the same pipeline (render sent email to business document, cluster with the Completion Packet, hand custody to Archive).
+6. **~~Build~~ Email Archive Handling (D10) — done, see §15**, PR #93 open. Terminal step of the D3/D5/D10 pipeline: render sent email to business document, cluster with the Completion Packet, hand custody to Archive — all built as a cross-reference on the Completion Packet, with Archive Load's existing manual trigger left unchanged.
 7. **Design the System Keys Card integrations registry** (D4) and rework `dispatch/accounting_export.py` (§4) to fit it as one registry entry, rather than staying a bespoke accounting adapter. Still needs a real DAT/Truckstop vendor answer before that entry does anything live.
 8. **Run one real load locally**, per the corrected `DEPLOY_LOCAL.md` walkthrough, exercising Load Search mid-run — this is still the fastest way to validate the doctrine against reality rather than pre-deciding every detail.
 9. **Scope D8 (archive atomicity) and the TOCTOU fix separately** before any networked/multi-worker deployment — neither blocks local single-user use, both remain deferred per D8's own resolution.
@@ -317,3 +319,29 @@ Same branch, `claude/end-load-completion-packet` (continuation, not a new branch
 **Tests:** `tests/test_email_helper.py` — 16 new tests (draft idempotency and content assembly, the submit approval gate — missing identity, system identity, zero recipients — the local-fallback send path, submit idempotency, the can't-edit-after-submit guard, and the full draft→edit→submit route flow end to end).
 
 **Full suite regression check:** clean on the first run this time — no repeat of §13's regression. **2,443/2,443 pass, exit 0** (2,427 + these 16).
+
+---
+
+## 15. D10 Email Archive Handling — Build Report
+
+New branch, `claude/d10-email-archive-handling`, off merged `main` (`cc6c467` — this is the first branch of the engagement created *after* the §9 merge round, so unlike §13/§14 it did not need to fork from a stale commit). PR **#93 opened and subscribed**, per the standing "one PR per branch as each section completes" policy from §9 — not re-asked, since that policy reads as forward-looking, not scoped only to the four branches open when it was set.
+
+**What was proven to exist before anything was written:** `dispatch/models.py::RetentionArchive` and `dispatch/store.py::create_retention()` — read in full before deciding how "Archive Takes Custody" should be implemented. `create_retention()` does an explicit `INSERT` against a fixed SQL column list, not a generic dataclass dump — confirming that adding a new field to `RetentionArchive` (e.g. an `email_cluster` column) would require a real schema migration, not a contained code change.
+
+**The design question that had to be resolved before writing code:** D10 ends in "Archive Takes Custody," which could mean either (a) `RetentionArchive` itself grows a field to hold the Email Cluster, or (b) the custody relationship is recorded as a cross-reference on the Completion Packet instead, pointing at the retention record's `archive_id` without the SQL table knowing anything changed. **Chose (b)** — no SQL schema touched, `dispatch/models.py` and `dispatch/store.py` are untouched by this branch, and the Completion Packet (already a file-backed, portal-layer record this engagement created) is the natural place per D10's own wording ("Store With Completion Package").
+
+**A second design question, resolved the same way as §14 deferred it:** does D10 mean Submit should auto-trigger `archive_load()`? Re-read D10 as describing what happens to a sent email once Archive Load runs, not a new trigger for when it runs — auto-archiving as a side effect of sending email would silently change an existing, deliberate, human-clicked action (`archiveLoad()` in the UI, unchanged since before this engagement). Kept `archive_load()`'s only trigger as the existing button; the new code only checks, when that button is clicked, whether a clustered packet exists to take custody of.
+
+**What was actually built:**
+
+| Component | File | Why it's new |
+|---|---|---|
+| `completion_packet.create_email_cluster(load_id, email_package)` — renders each sent email in a `SUBMITTED` package into a `{type, to, subject, body, send_result}` document, attaches evidence/POD/invoice references already present in the packet's own `closeout_data`, stores the cluster on the packet (`status` → `CLUSTERED`). Idempotent. | `portal/models/completion_packet.py` | The rendering/clustering concept didn't exist; extends the packet record this engagement already owns rather than creating a fourth parallel JSON-file model. |
+| `completion_packet.mark_archived(load_id, retention_archive_id)` — records custody (`status` → `ARCHIVED`). Idempotent — a second call with a different `archive_id` doesn't overwrite the first. | `portal/models/completion_packet.py` | Same reasoning; also closes the `STATUSES` list I'd pre-declared in §13 (`ASSEMBLED`/`ROUTED`/…/`ARCHIVED`) but never implemented the last transition for — extended to `ASSEMBLED → ROUTED → CLUSTERED → ARCHIVED` to give the intermediate "clustered, not yet in custody" state its own name. |
+| `submit_email_package` route now calls `create_email_cluster()` automatically after a real submit | `portal/routes/dispatch_api.py` | Matches D10's own framing — clustering is part of what "Email Sent" already implies, not a separate manual step. |
+| `archive_load` route now calls `mark_archived()` if a clustered packet exists for the load | `portal/routes/dispatch_api.py` | This is where "Archive Takes Custody" actually happens — inside the existing, unchanged archive trigger, not a new one. A load with no completion packet, or one that's only `ROUTED` (drafted/reviewed but never submitted), archives exactly as it did before this branch. |
+| Email Cluster + custody status shown on the load detail page, linking to the Retention Archive section once custody is taken | `dispatch_detail.html` | UI surface for the new concept, same placement pattern as §13/§14. |
+
+**Tests:** `tests/test_email_archive_handling.py` — 11 new tests: cluster rendering and file-attachment content, cluster-creation idempotency, confirming a `DRAFT`/`REVIEWED` (not yet submitted) package produces no cluster, custody marking on Archive Load, archiving a load with an un-clustered packet or no completion packet at all still working exactly as before, custody-marking idempotency, and — the test that most directly checks the "stays manual" design choice — that submitting an email package alone never changes the load's status to `archived` or creates a `RetentionArchive`.
+
+**Full suite regression check:** clean on the first run. **2,480/2,480 pass, exit 0** (2,469 post-merge baseline + these 11).
