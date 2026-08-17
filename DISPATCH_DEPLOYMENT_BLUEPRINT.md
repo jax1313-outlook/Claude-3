@@ -165,12 +165,11 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 | `claude/end-load-completion-packet` | End Load / Completion Packet (§13) + Email Helper review package (§14), D3/D5 | **Merged** via PR #92 |
 | `claude/freight-core-defect-fixes` | 9 defect fixes (§1) + 2 adapter boundaries (§4); finding #5 attempted and reverted (§1, §2) | **Merged** via PR #91 |
 | `claude/driver-load-search` | Load Search / Operational Retrieval, D6/D9 (§12) | **Merged** via PR #89 — went `behind` after #90/#92/#91 merged ahead of it, updated with the latest `main` via `update_pull_request_branch`, re-ran CI green, merged |
+| `claude/d10-email-archive-handling` | D10 Email Archive Handling (§15) | **Merged** via PR #93 — up to date with `main` at open, CI green on the first run, no `update_pull_request_branch` round needed |
 
-**`main` is now at `cc6c467`** (PR #88 → #90 → #92 → #91 → #89, in that order). Every PR after the first in this run needed one `update_pull_request_branch` round after the merge immediately before it, since GitHub's branch protection requires a PR to be up to date with `main` — not just green — before it merges. No conflicts arose in any round; all five merged branches touched disjoint files. All five branches from this engagement are now merged; none remain open.
+**`main` is now at `57a7701`** (PR #88 → #90 → #92 → #91 → #89 → #93, in that order). All six branches from this engagement are now merged; none remain open.
 
-**Post-merge full-suite confirmation, run directly against `main` @ `cc6c467`** (not just each PR's own CI in isolation): **2,469/2,469 pass, exit 0.** Reconciles exactly against the running baseline — 2,414 (original) + 6 (Load Search, §12) + 20 (defect fixes + boundaries, §1/§4) + 13 (Completion Packet, §13) + 16 (Email Helper, §14) = 2,469 — confirming no integration issue between any of the five independently-developed branches now that they all share one history.
-
-**New branch since that merge round:** `claude/d10-email-archive-handling` — D10 Email Archive Handling (§15). Pushed. **PR #93 opened and subscribed**, not merged yet.
+**Post-merge full-suite confirmation, run directly against `main` @ `cc6c467`** (the state after PR #89, before #93): **2,469/2,469 pass, exit 0.** Reconciles exactly against the running baseline — 2,414 (original) + 6 (Load Search, §12) + 20 (defect fixes + boundaries, §1/§4) + 13 (Completion Packet, §13) + 16 (Email Helper, §14) = 2,469.
 
 **PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
@@ -345,3 +344,41 @@ New branch, `claude/d10-email-archive-handling`, off merged `main` (`cc6c467` �
 **Tests:** `tests/test_email_archive_handling.py` — 11 new tests: cluster rendering and file-attachment content, cluster-creation idempotency, confirming a `DRAFT`/`REVIEWED` (not yet submitted) package produces no cluster, custody marking on Archive Load, archiving a load with an un-clustered packet or no completion packet at all still working exactly as before, custody-marking idempotency, and — the test that most directly checks the "stays manual" design choice — that submitting an email package alone never changes the load's status to `archived` or creates a `RetentionArchive`.
 
 **Full suite regression check:** clean on the first run. **2,480/2,480 pass, exit 0** (2,469 post-merge baseline + these 11).
+
+---
+
+## 16. Status Review & Parallel Build Matrix
+
+**Where things stand.** All six branches from this engagement are merged to `main` (§9): HOLD/Sandbox scoping (#88), deploy docs (#90), freight-core defect fixes + boundaries (#91), Load Search (#89), End Load/Completion Packet/Email Helper (#92), D10 Email Archive Handling (#93). `main` is at `57a7701`. Full suite confirmed clean on merged `main` at 2,469/2,469 after the first five; a second post-#93 confirmation is running now (§15 notes the pre-#93 number — see chat for the final count once it lands). The entire D3/D5/D10 completion pipeline described in the original decision register is now live: run load → end load → assemble Completion Packet → route to Publisher → draft/review/submit via Email Helper → render and cluster the sent email → Archive Load takes custody.
+
+**What's genuinely left, reclassified by what's actually blocking each item** — not just restated from §2/§11, but sorted by whether it can move today:
+
+| # | Item | Decision status | Blocking constraint | Can build now? |
+|---|---|---|---|---|
+| M1 | D1 — enforce `cancelled → archived` in `_VALID_TRANSITIONS`; flip `archive_load()`'s existing non-blocking check to a real gate | Decided (§6) | None — checked `dispatch/services.py` directly just now: `"cancelled": set()` is still exactly as it was before D1 was answered. Decided but never implemented. | **Yes** |
+| M2 | `publisher_adapter.py`'s stale `is_approval_enforced=False` | Identified defect (§2) | None — unwired stub (confirmed: no route/UI reachability), one-line factual correction | **Yes** |
+| M3 | D4 — System Keys Card integrations registry (the generic container: Accounting/ELD/Scanner/Printer/DAT/TruckSmart/Other, each holding API Key/Credentials/Token/Config) | Decided (§6) | None for the *container* — it's a settings/config store, same shape as Publisher/Library's own JSON-file models. Only the individual vendor integrations behind it need real credentials. | **Yes, the registry itself** |
+| M4 | Actual document generation for Email Helper (invoice/broker-packet content beyond the current plain-text email body) | Flagged as deferred (§14) | None architecturally — extends the existing Email Helper draft, same pattern | **Yes** |
+| M5 | Stricter read-only Load Search detail view | Flagged as a real scoping choice, not built (§12) | None — but genuinely optional; only worth building if wanted | **Yes, if wanted** |
+| A1 | Finding #5 — `archive_load()`/`add_milestone()` bypass `validate_status_transition()` | Attempted once, reverted (§1/§2) | Needs a correct design (distinguish legitimate milestone skip-ahead from reviving a terminal state) before a second attempt — not a parallel-safe item, same files as M1 | **Careful, solo** |
+| A2 | Archive atomicity (`archive_load()`'s 3-step write isn't transactional) | Identified (§2) | Requires giving `store.py`'s ~50 functions a shared-connection pattern — genuine core-architecture change per rule 3, needs your explicit approval before starting, not just before merging | **Needs approval to start** |
+| B1 | D7 — `DISPATCH_ARCHIVE_PATH` vs `DISPATCH_ARCHIVE_ROOT` naming | Still open (§2, §6) | Needs your answer — nothing to build until decided | **Blocked on you** |
+| B2 | Double-booking prevention (driver/equipment already on another open load) | Identified, correctly left as a business-rule question (§2) | Needs your answer: can one driver legitimately run two loads at once in some workflow? | **Blocked on you** |
+| B3 | DAT/Truckstop load-board vendor wiring (the specific API behind M3's registry) | Partially scaffolded (§4) | Needs your vendor choice + real response-shape confirmation | **Blocked on you** |
+| C1 | TOCTOU race in `update_load()` | Identified, correctly deferred (§2) | Not reachable today (single-threaded dev server); becomes real only behind a multi-worker WSGI deployment | **Correctly not building yet** |
+
+**The parallel-build matrix — what M1-M5 look like run concurrently, if authorized:**
+
+| Lane | Item | Primary file(s) touched | Overlaps with another lane? | Branch |
+|---|---|---|---|---|
+| 1 | M1 (D1 transition fix) | `dispatch/services.py` (`_VALID_TRANSITIONS`, `archive_load()`) | **Yes — A1** touches the exact same function and is explicitly not parallel-safe with it. M1 alone is safe; don't run A1 alongside it. | `claude/d1-status-transition-gate` |
+| 2 | M2 (adapter fix) | `reconciliation/adapters/publisher_adapter.py` | None | `claude/publisher-adapter-flag-fix` |
+| 3 | M3 (registry container) | New `portal/models/integrations_registry.py` + routes + UI | None | `claude/system-keys-registry` |
+| 4 | M4 (document generation) | `portal/models/email_helper.py`, `dispatch_detail.html` | None — M4 extends Email Helper, M1/M2/M3 don't touch it | `claude/email-helper-document-generation` |
+| 5 | M5 (read-only search detail view, only if wanted) | New template + route | None | `claude/load-search-readonly-detail` |
+
+Lanes 2-5 touch entirely disjoint files and have no dependency on each other — genuinely parallelizable, same reasoning §9 already proved out across the last six branches (five of six merges had zero conflicts). Lane 1 (M1) is parallel-safe with 2-5 but must not run alongside A1 (finding #5) on the same branch or the same work session, since both touch `_VALID_TRANSITIONS`/`archive_load()` and the second attempt at A1 needs the lessons from the first failed attempt applied deliberately, not raced against an unrelated concurrent edit to the same function.
+
+**Not on this matrix on purpose:** A2 (archive atomicity) and B1-B3 — none of them are safe or possible to just start building; each needs either your explicit go-ahead (A2, since it's core architecture) or your answer to an open question (B1-B3) before there's anything to build.
+
+**Recommendation, not a decision:** Lanes 2-5 (M2-M5) plus Lane 1 (M1) alone are ready to build in parallel right now with no further input needed from you — say the word and I'll branch and build all five concurrently, reporting back per-branch same as this session's established pattern. A1 (finding #5) is worth doing next but solo, after the M1 lane lands, not alongside it.
