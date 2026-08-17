@@ -75,7 +75,7 @@ Later items depend on earlier ones landing first. Do not promote out of order.
 
 ## 4. HOLD 3-hour delete rule
 
-> **Sign-off status: RESOLVED.** See "HOLD sign-off log" below — this section was updated after Mike's ruling. Delete-on-expiry is confirmed as originally built; no code change was required.
+> **Sign-off status: RESOLVED.** See "HOLD sign-off log" below — this section was updated after Mike's ruling. Delete-on-expiry is confirmed as originally built; no code change was required. **Target architecture updated, current promotion unchanged** — see "Doctrine clarification: Sandbox is not one model long-term" below. The `source_type` filtering in this section is accepted as the correct bridge measure for promoting into today's still-shared Dispatch Sandbox; it is explicitly not the long-term design once Dispatch and SAM are physically separated.
 
 | | |
 |---|---|
@@ -96,6 +96,22 @@ Later items depend on earlier ones landing first. Do not promote out of order.
 - **Governing ruling (current):** *"Sandbox is a Decision Workspace, not a Records Repository. Loads presented in HOLD are decision-support artifacts, not business records. A Dispatch record is created only by ingestion or Publisher creation. Therefore retention doctrine applicable to Library and Archive does not automatically apply to Sandbox objects. The HOLD system exists solely to provide a short operator decision window and may sweep stale candidates to prevent search stacking and cognitive overload."*
 - **Effect:** this doesn't override the no-delete-without-Mike principle for a special case — it establishes that principle was never in scope for Sandbox/HOLD entries in the first place, since they aren't records. The apparent doctrine conflict flagged in the original architectural review is dissolved by this distinction, not overruled by it. `dispatch_build/sandbox.py`'s delete-on-expiry behavior, as originally built, is confirmed correct and requires no change.
 - **What this ruling does not settle:** the SAM/freight scoping requirement for promoting HOLD into Dispatch's real, shared Sandbox model. That risk is independent of retention doctrine. It has since been scoped and built in Claude-3 (this section, above) — proven in the sandbox, not yet executed against Dispatch.
+
+### Doctrine clarification: Sandbox is not one model long-term (accepted, changes the target architecture)
+
+A further ruling arrived after the scoping work above landed, and changes what "promotion" is ultimately promoting *toward* — recorded verbatim, then reconciled against what's built:
+
+> *"The original shared Sandbox assumption is no longer valid. Freight and SAM are being separated. They have materially different operational lifecycles. Freight Sandbox: short-duration decision workspace, HOLD/SWEEP behavior applies. SAM Sandbox: long-duration opportunity workspace, research and proposal workflow, HOLD behavior does not apply. Future architecture should assume separate physical Sandboxes rather than a shared model."*
+>
+> *"Dispatch and SAM have materially different missions, workflows, retention requirements, decision timelines, and operational behaviors. Dispatch = Freight. SAM = SAM. Future architecture should assume separation of Dispatch and SAM into separate physical programs. Sandbox behavior, retention rules, workflow states, and lifecycle management should be evaluated within the context of each program rather than through a shared-model assumption."*
+
+**What this changes:** the target architecture is no longer "one shared Sandbox, filtered per-program at read/write time" (what item 4's scoping work assumes it's promoting into). It's "two Sandboxes, one per physically separate program, each with its own retention and lifecycle rules — Freight's short and HOLD-governed, SAM's long and research/proposal-governed, with no shared model to filter at all."
+
+**What this does not change, and what was explicitly accepted:** *"Accept the source_type filtering and the five scoping tests as the immediate guardrail required for safe HOLD promotion into the current shared Dispatch codebase."* The filtering built in this section is confirmed as the correct **bridge** measure — Dispatch's real Sandbox is shared today, whatever the target architecture becomes, and HOLD cannot be promoted safely into that shared reality without it. It is explicitly not the destination:
+
+- **Now → promotion into current Dispatch:** port the `source_type` filtering as built and tested here. This is still required and still correct.
+- **Later → physical separation lands:** freight Sandbox code (HOLD, sweep, short-duration decision logic) moves into a freight-only Sandbox with no filtering, because there is no longer anything foreign to filter against. SAM's Sandbox becomes its own model, without HOLD, shaped around its actual long-duration research/proposal lifecycle instead of inheriting freight's timing assumptions. The `source_type` field and every filter built around it in this promotion plan become dead code at that point and should be retired, not carried forward as a permanent pattern.
+- This plan promotes HOLD into today's shared reality only. It does not design, build, or schedule the physical separation — that is a separate future mission, out of scope here as much as SAM/CIN-Lite itself is (see program separation, throughout).
 
 ---
 
@@ -186,7 +202,7 @@ Later items depend on earlier ones landing first. Do not promote out of order.
 
 ## Cross-cutting summary
 
-**SAM/CIN contamination** — Zero contamination by design in 7 of 9 components (Trip Card, Completion Packet, Email Helper, Completion message template, Accounting, Archive, and Communication Card provided its action set stays closed). **HOLD and Operations Cockpit are the two components that touch the shared Sandbox model** — both now have a working, tested freight-only filter in Claude-3 (`source_type` scoping at commit, sweep, and Cockpit read time; see item 4 and item 6), rather than only a documented intention. The remaining risk is narrower: the same filter has to be ported into `portal/models/sandbox.py` and `portal/cockpit.py` and re-proven against Dispatch's real, larger Sandbox — not designed from scratch.
+**SAM/CIN contamination** — Zero contamination by design in 7 of 9 components (Trip Card, Completion Packet, Email Helper, Completion message template, Accounting, Archive, and Communication Card provided its action set stays closed). **HOLD and Operations Cockpit are the two components that touch the shared Sandbox model** — both now have a working, tested freight-only filter in Claude-3 (`source_type` scoping at commit, sweep, and Cockpit read time; see item 4 and item 6), rather than only a documented intention. The remaining risk is narrower: the same filter has to be ported into `portal/models/sandbox.py` and `portal/cockpit.py` and re-proven against Dispatch's real, larger Sandbox — not designed from scratch. **This filtering is accepted as an interim bridge, not the target architecture** — Mike's later doctrine clarification (item 4) calls for Dispatch and SAM to eventually become separate physical programs with separate Sandboxes, at which point the `source_type` filter has no remaining purpose and should be retired rather than preserved as a permanent pattern.
 
 **Manager** — Touched by none of the nine mandatory components. Nothing in this plan requires, reads from, or writes to `docs/MANAGER.md` or any `stage12/13-*` branch. Manager remains deferred through this entire promotion.
 
