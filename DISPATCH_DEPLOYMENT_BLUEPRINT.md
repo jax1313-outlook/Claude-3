@@ -63,7 +63,7 @@ The fix was built on a wrong premise: that milestones should be governed by the 
 | **TOCTOU race in `update_load()`'s status validation** (sweep finding #12) — read-validate-write across separate connections with no locking; two concurrent status changes from the same starting state can race. | Confirmed **not currently reachable**: the only run path (`portal/app.py`, `python portal/app.py`) uses Flask's default single-threaded dev server. Becomes real only behind a multi-worker/multi-threaded WSGI server (i.e. the VPS deployment path with gunicorn `--workers 2`, per `DEPLOY_VPS.md`). Worth resolving before scaling past one dispatcher on a networked deployment — not before a first local live load. |
 | **`archive_load()` has no completeness gate** (from the earlier gap analysis, reconfirmed) — a load with zero evidence and no POD can be archived. | Explicitly out of scope per your own instruction when this was first found: a business-rule decision (what must exist before a load can close), not a code defect. |
 | **Double-booking of drivers/equipment is not prevented** — `_validate_driver_assignment`/`_validate_equipment_assignment` only check `status == "active"`, never whether the driver/equipment is already on another open load, even though `store.get_active_load_for_driver`/`get_active_load_for_equipment` already exist and are used for display elsewhere. | Business-rule gap (can one driver legitimately run two loads simultaneously in some workflow?), not a code-safety defect — correctly separated by the defect-sweep agent, not re-litigated here. |
-| **`PORTAL_INQUIRY_MODE`** — **RESOLVED, no longer unresolved.** See D6 (§6): reclassified as a Mandatory Core Function (Load Search / Operational Retrieval) under Driver-First Doctrine (§0). Moved out of this table because the *question* is answered — but the *feature* it now names doesn't exist yet (today it's read into `Config` and shown on settings, nothing else). It's tracked as a required, not-yet-built item in §10/§11, not left here as an open question. | — |
+| **`PORTAL_INQUIRY_MODE`** — **RESOLVED.** See D6 (§6): reclassified as a Mandatory Core Function (Load Search / Operational Retrieval) under Driver-First Doctrine (§0). **Built — see §12.** Correction to this document's own earlier claim: the search UI/route/backend were assumed absent, based on `PORTAL_INQUIRY_MODE` (the config flag) having zero wiring. That's still true of the flag itself — but a real, separate, already-tested search feature (`dispatch.store.global_search()`, `GET /search`, `GET /api/dispatch/search`) existed on `main` all along, unconnected to that flag, discovered only once implementation started. §12 covers what was found versus what was actually built. | — |
 | **`DISPATCH_ARCHIVE_PATH` vs `DISPATCH_ARCHIVE_ROOT` naming collision** (original decision-register question D7) — two different env vars controlling two different trees (contract-intel vs. freight), yet freight notification `.eml` fallbacks land under the `DISPATCH_ARCHIVE_PATH` tree, not the freight-intuitive `DISPATCH_ARCHIVE_ROOT` tree. The codebase's own comments (`dispatch/services.py`) acknowledge this exact confusion for a related case. | **Still genuinely open.** The "Final D1-D8 Decisions" message answered a different question under the label "D7" (email/business-document archive handling — recorded as new decision **D10** in §6) — that is not an answer to this one. Kept here, unresolved, rather than silently marked answered by a decision that addressed something else. |
 | **Reconciliation adapters (`reconciliation/`) are a genuinely tested but completely unwired stub** — zero routes, zero UI, confirmed by grep. Explicitly documented as intentional in `docs/CANONICAL_RECONCILIATION_INTEGRATION.md`. | Not a gap to close — it's working as designed (a read-only reporting layer not yet wired in). Included here only so it isn't mistaken for broken. |
 | **`publisher_adapter.py` hardcodes `is_approval_enforced=False`**, which is now stale — `portal/models/publisher.py`'s `update_action_status()` *does* enforce a real `approved_by` identity for `APPROVED` transitions. | The adapter under-reports current enforcement state. Low-stakes (the adapter is unwired, per above) but worth a follow-up ticket since it's a factual inaccuracy in code, not a design gap. |
@@ -163,6 +163,7 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 | `claude/sandbox-source-type-filtering-hold` | HOLD/Sandbox SAM-freight scoping | **Merged** via PR #88 (explicitly requested and approved earlier in this engagement) |
 | `claude/fix-deploy-docs-init-admin` | Deploy doc fixes (§7) | Pushed, not merged, no PR opened |
 | `claude/freight-core-defect-fixes` | 9 defect fixes (§1) + 2 adapter boundaries (§4); finding #5 attempted and reverted (§1, §2) | Pushed, not merged, no PR opened |
+| `claude/driver-load-search` | Load Search / Operational Retrieval, D6/D9 (§12) | Pushed, not merged, no PR opened |
 
 ---
 
@@ -178,7 +179,7 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 
 | Subsystem | Data Model | Service Layer | API Route(s) | UI | Tests | Readiness | Notes |
 |---|---|---|---|---|---|---|---|
-| **Load Search / Operational Retrieval** (D6, §6) | None | None | None | None | None | **ABSENT** | `PORTAL_INQUIRY_MODE` is a `Config` value read at startup and displayed on the settings page — that's the entire footprint. No search index, no lookup endpoint, no driver-facing UI exists. Per D9's doctrine, this is now required in the first-live-load path (§11), not optional. |
+| **Load Search / Operational Retrieval** (D6, §6) | `loads`/`drivers`/`equipment`/`settlements` tables (existing) + `BrokerContact` (existing) | `dispatch/store.py::global_search()` (existing, extended §12) | `GET /search`, `GET /api/dispatch/search` (existing) | `portal/templates/search.html` (existing, extended §12), sidebar link on every page (existing, relabeled §12) | `tests/test_global_search.py`, 27 tests (17 existing + 10 new, §12) | **COMPLETE** | Corrects this document's own earlier "ABSENT" claim — see the note under this row's original entry in §2. Built on top of a real pre-existing feature; see §12 for exactly what was found vs. added. |
 
 Full test suite (independently confirmed twice by two different workstreams, on unmodified `main`): **2,414/2,414 pass, exit 0.**
 
@@ -189,7 +190,7 @@ Full test suite (independently confirmed twice by two different workstreams, on 
 D1-D6, D8-D10 are now resolved (§6); this sequence reflects that. D7 (archive path naming) is the one still-open item from the original register.
 
 1. **Merge the two already-pushed branches** (§9) after review — doc fixes first (zero risk), then the defect-fix/boundary branch (tested, additive, but touches more surface).
-2. **Build Load Search / Operational Retrieval (D6, D9) — highest-priority net-new item, required in the first-live-load path per Driver-First Doctrine.** Per the doctrine message's own scoping for the smallest functional version that passes the 70 MPH test: a visible LOAD SEARCH/LOOKUP action reachable from every major Driver Portal screen; a fast search path over existing load records (start with Load Number, BOL Number, PO/reference number, broker/customer contact fields — the full required-target list is in §6/D6); read-only display of key load info; read-only access to attached/related documents where available; strictly no create/modify/send/archive/complete/status-change actions from this mode. This is genuinely new — no data model, service layer, route, or UI exists for it today (§10).
+2. **~~Build~~ Extend Load Search / Operational Retrieval (D6, D9) — done, see §12.** Turned out to be mostly-real already; extended rather than built from scratch.
 3. **Update `_VALID_TRANSITIONS`** (D1) to add `"cancelled": {"archived"}`, then flip `archive_load()`'s existing non-blocking consistency check (§1) to a real, enforced gate.
 4. **Extend the `Load` model and commit-time validation** (D2) to carry broker/customer contact fields and treat Rate Confirmation/POD/Invoice/Completion Packet as expected-eventually on a committed load.
 5. **Build the End Load deterministic workflow and Completion Packet concept** (D3, D5) — these two decisions describe one pipeline (End Load → Completion Packet → Invoice/POD attach → Broker/Customer email generation → Email Package → Email Helper) that doesn't exist as a component yet, only as connected existing pieces (Publisher, Library) plus new ones (Completion Packet, Email Helper review step, the customer-notification transport already built in §4). Build in this order, since each depends on the last: Completion Packet assembly → Email Helper review/approval step → wire End Load to trigger it deterministically.
@@ -198,3 +199,41 @@ D1-D6, D8-D10 are now resolved (§6); this sequence reflects that. D7 (archive p
 8. **Run one real load locally**, per the corrected `DEPLOY_LOCAL.md` walkthrough, exercising Load Search mid-run — this is still the fastest way to validate the doctrine against reality rather than pre-deciding every detail.
 9. **Scope D8 (archive atomicity) and the TOCTOU fix separately** before any networked/multi-worker deployment — neither blocks local single-user use, both remain deferred per D8's own resolution.
 10. **Resolve D7** (archive path naming) whenever convenient — low-stakes, not sequenced against anything else.
+
+---
+
+## 12. Load Search / Operational Retrieval — Build Report
+
+Branch: `claude/driver-load-search`. Authorized implementation (explicit "Build Load Search now"), not blueprint mode.
+
+**What was assumed vs. what was found.** §0/§10 originally stated Load Search was entirely absent, reasoning from `PORTAL_INQUIRY_MODE` (a `Config` value, confirmed unused) having zero wiring. Before writing new code, `base.html`'s nav was checked directly and already contained a working `Search` link → `GET /search` → `dispatch.store.global_search()` → `search.html`, covering loads/drivers/equipment/settlements, already read-only (no action buttons in results), already tested (17 tests in `tests/test_global_search.py`), already on every page. **This was a separate, real, pre-existing feature, unconnected to `PORTAL_INQUIRY_MODE` — the assumption that "the config flag is dead" implied "the feature doesn't exist" was wrong; they were never the same thing.** An initial pass of new, parallel code (a second `search_loads()` in `store.py`/`services.py`) was written before this was discovered, then fully reverted once found — see the governance note below.
+
+**What was actually built — extension, not new construction:**
+
+| Change | File | Why |
+|---|---|---|
+| Added `notes` to the load-search field list | `dispatch/store.py::global_search()` | BOL/PO/reference numbers (doctrine-required lookup targets) have no dedicated field anywhere in this schema — notes is the only place one could currently be found. Documented as an honest limitation, not fixed by inventing new schema (that's D2/future work). |
+| Added a `brokers` results section, reusing the already-existing `list_broker_contacts(search=...)` (itself already searches company name, contact name, MC number, phone, and email) | `dispatch/store.py::global_search()` | Closes the "Broker Contact/Phone/Email" required lookup target directly — no new search logic needed, just wiring an existing function in. |
+| Relabeled the page title, nav link, and search placeholder from generic "Search" to "Load Search" / "Find the answer now" | `portal/templates/search.html`, `portal/templates/base.html` | Driver-First Doctrine (§0): plain operational language, not a technical/generic label. |
+| Added a one-line "read-only lookup" statement to the search page itself | `portal/templates/search.html` | Makes the blocked-actions rule visible to the person using it, not just documented in this file. |
+
+**What was deliberately not touched:** the results table structure, the existing loads/drivers/equipment/settlements search logic, the `/api/dispatch/search` JSON endpoint's shape (the new `brokers` key flows through automatically — that route spreads `**results` and sums `results.values()` generically, needed no code change), and the link-through to the full `/dispatch/<load_id>` detail page (a separate, already-existing, already-audited page — not part of "search mode" itself; the doctrine's read-only requirement governs the search interaction, not everywhere a search result can lead).
+
+**Governance note — a real mistake, caught before it shipped:** the first attempt duplicated `global_search()` with a second, parallel `search_loads()`/`get_load_search_detail()` in both `store.py` and `services.py`, written before checking whether anything already existed. This is exactly the failure mode this whole engagement's governance rules exist to prevent (per the earlier "prove what already exists, then build only what truly does not" framing). Caught by reading `base.html`'s nav before wiring routes, not by a test failure — fully reverted (`git checkout --`) before any commit. Left in this record rather than omitted.
+
+**Doctrine-required lookup targets — coverage after this pass:**
+
+| Target | Status |
+|---|---|
+| Load Number, Current Load Status | ✅ (pre-existing) |
+| Broker Contact/Phone/Email | ✅ (new, this pass) |
+| Customer Contact/Phone/Email | ❌ — `Load` has no such fields at all yet (D2, not yet built) |
+| Pickup/Delivery Address | ✅ (pre-existing) |
+| Invoice | ✅ (pre-existing, via settlements) |
+| Appointment Time | Partial — `pickup_datetime`/`delivery_datetime` exist and are shown on the load detail page reachable from search, not distinctly on the results list itself |
+| BOL Number, PO Number, Reference Number | Partial, honest limitation — findable only if typed into a load's free-text `notes` (new, this pass); no dedicated field exists anywhere in the schema |
+| Rate Confirmation, POD, Completion Packet, Archive Record, related documents | Not shown on the search results list itself, but reachable via the linked load detail page, which already displays all of these except Completion Packet (doesn't exist as a concept yet, per D3/D5) |
+
+**Tests:** `tests/test_global_search.py` — 27 tests (17 existing, unmodified and still passing + 6 new: load-by-notes search, broker search by company name and by phone, driver-facing label check, read-only/no-action-buttons check, brokers section rendering). Full suite re-run after this change: **2,420/2,420 pass, exit 0** (the 2,414-test baseline plus these 6).
+
+**Not done, and why:** a distinct read-only load-detail view. The doctrine's blocked-actions list governs the search *results* view; the existing `/dispatch/<load_id>` detail page (which does have edit/action controls) is where a result links to, same as it already did before this pass. Building a second, parallel detail view was considered and rejected as unnecessary scope for "smallest functional version" — flagged here as a real design choice, not an oversight, in case Mike wants search results to link to a stricter read-only page instead.
