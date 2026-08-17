@@ -169,7 +169,7 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 
 **`main` is now at `57a7701`** (PR #88 → #90 → #92 → #91 → #89 → #93, in that order). All six branches from this engagement are now merged; none remain open.
 
-**Post-merge full-suite confirmation, run directly against `main` @ `cc6c467`** (the state after PR #89, before #93): **2,469/2,469 pass, exit 0.** Reconciles exactly against the running baseline — 2,414 (original) + 6 (Load Search, §12) + 20 (defect fixes + boundaries, §1/§4) + 13 (Completion Packet, §13) + 16 (Email Helper, §14) = 2,469.
+**Post-merge full-suite confirmation, run directly against `main`** — twice: at `cc6c467` (after PR #89, before #93): **2,469/2,469 pass, exit 0.** Then again at `57a7701` (after #93): **2,480/2,480 pass, exit 0** — reconciles exactly (2,469 + 11 from D10, §15), confirming #93 introduced no integration issue on top of the other five merges.
 
 **PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
@@ -349,7 +349,7 @@ New branch, `claude/d10-email-archive-handling`, off merged `main` (`cc6c467` �
 
 ## 16. Status Review & Parallel Build Matrix
 
-**Where things stand.** All six branches from this engagement are merged to `main` (§9): HOLD/Sandbox scoping (#88), deploy docs (#90), freight-core defect fixes + boundaries (#91), Load Search (#89), End Load/Completion Packet/Email Helper (#92), D10 Email Archive Handling (#93). `main` is at `57a7701`. Full suite confirmed clean on merged `main` at 2,469/2,469 after the first five; a second post-#93 confirmation is running now (§15 notes the pre-#93 number — see chat for the final count once it lands). The entire D3/D5/D10 completion pipeline described in the original decision register is now live: run load → end load → assemble Completion Packet → route to Publisher → draft/review/submit via Email Helper → render and cluster the sent email → Archive Load takes custody.
+**Where things stand.** All six branches from this engagement are merged to `main` (§9): HOLD/Sandbox scoping (#88), deploy docs (#90), freight-core defect fixes + boundaries (#91), Load Search (#89), End Load/Completion Packet/Email Helper (#92), D10 Email Archive Handling (#93). `main` is at `57a7701`. Full suite confirmed clean directly on merged `main`, twice: 2,469/2,469 after the first five merges, then **2,480/2,480, exit 0** after #93 — the entire D3/D5/D10 completion pipeline described in the original decision register is now live and verified: run load → end load → assemble Completion Packet → route to Publisher → draft/review/submit via Email Helper → render and cluster the sent email → Archive Load takes custody.
 
 **What's genuinely left, reclassified by what's actually blocking each item** — not just restated from §2/§11, but sorted by whether it can move today:
 
