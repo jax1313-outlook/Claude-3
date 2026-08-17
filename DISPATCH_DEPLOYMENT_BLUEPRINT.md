@@ -168,6 +168,8 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 
 **`main` is now at `cc6c467`** (PR #88 → #90 → #92 → #91 → #89, in that order). Every PR after the first in this run needed one `update_pull_request_branch` round after the merge immediately before it, since GitHub's branch protection requires a PR to be up to date with `main` — not just green — before it merges. No conflicts arose in any round; all five merged branches touched disjoint files. All five branches from this engagement are now merged; none remain open.
 
+**Post-merge full-suite confirmation, run directly against `main` @ `cc6c467`** (not just each PR's own CI in isolation): **2,469/2,469 pass, exit 0.** Reconciles exactly against the running baseline — 2,414 (original) + 6 (Load Search, §12) + 20 (defect fixes + boundaries, §1/§4) + 13 (Completion Packet, §13) + 16 (Email Helper, §14) = 2,469 — confirming no integration issue between any of the five independently-developed branches now that they all share one history.
+
 **PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
 ---
