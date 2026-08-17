@@ -15,6 +15,7 @@ from .archive import Archive
 from .email_helper import EmailHelper, MockOutlookTransport
 from .library import Library
 from .models import (
+    SANDBOX_SOURCE_FREIGHT,
     CommunicationAction,
     CommunicationCard,
     CommunicationStatus,
@@ -68,12 +69,31 @@ class DispatchStore:
     # -- Step 3: move to sandbox ---------------------------------------------
     def send_to_sandbox(self, load_id: str, now=None):
         load = self.loads[load_id]
-        return self.sandbox.add(load, now=now)
+        entry = self.sandbox.add(load.id, source_type=SANDBOX_SOURCE_FREIGHT, now=now)
+        load.sandbox_id = entry.id
+        load.status = LoadStatus.SANDBOX
+        return entry
 
     # -- Step 4-5: commit -> Active Load --------------------------------------
     def commit_load(self, sandbox_id: str, now=None):
-        entry = self.sandbox.commit(sandbox_id, self.loads, now=now)
+        entry, runner_ups = self.sandbox.commit(sandbox_id, now=now)
+        if entry.source_type != SANDBOX_SOURCE_FREIGHT:
+            # Defense in depth: this call path is freight-only. A non-freight
+            # sandbox_id reaching here means a caller bug upstream, not a
+            # state this store should ever act on.
+            raise ValueError(
+                f"commit_load() can only commit freight-sourced sandbox entries; "
+                f"{sandbox_id} is source_type={entry.source_type!r}"
+            )
+
         load = self.loads[entry.load_id]
+        load.status = LoadStatus.ACTIVE
+
+        for sibling in runner_ups:
+            sibling_load = self.loads.get(sibling.load_id)
+            if sibling_load:
+                sibling_load.status = LoadStatus.RUNNER_UP
+
         # -- Step 6: Trip Card opens
         self.trip_card_board.open(load, now=now)
         return load
@@ -85,8 +105,10 @@ class DispatchStore:
 
     # -- HOLD sweep (runner-up expiration) -------------------------------------
     def run_hold_sweep(self, now=None) -> List[str]:
-        """Delete expired runner-up sandbox entries. Deleted, not archived."""
-        return self.sandbox.run_hold_sweep(now=now)
+        """Delete expired runner-up sandbox entries. Deleted, not archived.
+        Explicitly freight-scoped -- this store never sweeps any other
+        program's sandbox entries, even ones sharing the same Sandbox."""
+        return self.sandbox.run_hold_sweep(source_type=SANDBOX_SOURCE_FREIGHT, now=now)
 
     # -- Step 9-15: Close Load -> Completion Packet -> Archive -----------------
     def close_load(

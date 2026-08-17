@@ -63,11 +63,21 @@ class SandboxStatus(str, Enum):
 
 HOLD_HOURS = 3
 
+# Dispatch's real Sandbox is shared infrastructure: it also holds SAM /
+# CIN-Lite opportunity entries, tagged by the same source_type field
+# (sid = f"SBX-{source_type.upper()}-{source_id}"). This build stays
+# freight-only, but the Sandbox/HOLD promotion target is shared, so every
+# entry here is tagged with its source program and every operation that
+# touches multiple entries (commit side-effects, HOLD sweep) must filter
+# on it explicitly rather than assume the sandbox only ever holds freight.
+SANDBOX_SOURCE_FREIGHT = "dispatch"
+
 
 @dataclass
 class SandboxEntry:
     id: str
     load_id: str
+    source_type: str = SANDBOX_SOURCE_FREIGHT
     status: SandboxStatus = SandboxStatus.OPEN
     entered_at: datetime = None
     hold_started_at: Optional[datetime] = None

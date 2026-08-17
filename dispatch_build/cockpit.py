@@ -13,11 +13,17 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from .models import CommunicationStatus, LoadStatus, SandboxStatus
+from .models import SANDBOX_SOURCE_FREIGHT, CommunicationStatus, LoadStatus, SandboxStatus
 
 
 def build_cockpit_view(store, now: datetime | None = None) -> dict:
+    """This is a freight Operations Cockpit. Every Sandbox-derived queue
+    below is scoped to freight-sourced entries explicitly -- Dispatch's
+    real Sandbox is shared with SAM, and a freight Cockpit must never
+    surface a SAM entry, even transiently, even if one happens to be
+    sitting in the same store."""
     now = now or datetime.utcnow()
+    freight_sandbox_entries = store.sandbox.all(source_type=SANDBOX_SOURCE_FREIGHT)
 
     active_loads = [
         {"load_id": l.id, "origin": l.origin, "destination": l.destination, "broker": l.broker}
@@ -43,7 +49,7 @@ def build_cockpit_view(store, now: datetime | None = None) -> dict:
             "status": e.status.value,
             "hold_expires_at": e.hold_expires_at.isoformat() if e.hold_expires_at else None,
         }
-        for e in store.sandbox.all()
+        for e in freight_sandbox_entries
     ]
 
     communications = [
@@ -59,7 +65,7 @@ def build_cockpit_view(store, now: datetime | None = None) -> dict:
 
     # Decisions: things only Mike can move forward.
     decisions = []
-    for e in store.sandbox.all():
+    for e in freight_sandbox_entries:
         if e.status == SandboxStatus.OPEN:
             decisions.append({"type": "commit_load", "sandbox_id": e.id, "load_id": e.load_id})
     for c in store.trip_card_board._cards.values():
@@ -68,7 +74,7 @@ def build_cockpit_view(store, now: datetime | None = None) -> dict:
 
     # Awareness: informational, non-gating signals worth Mike seeing.
     awareness = []
-    for e in store.sandbox.all():
+    for e in freight_sandbox_entries:
         if e.status == SandboxStatus.RUNNER_UP and e.hold_expires_at:
             remaining = e.hold_expires_at - now
             if remaining <= timedelta(hours=1):
