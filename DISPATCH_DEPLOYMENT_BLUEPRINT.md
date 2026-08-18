@@ -469,3 +469,30 @@ M1 (#95) and M5 (#96) were both built independently against the same starting `m
 ### Tests and final verification
 
 54 new tests across the five lanes (M1: 7, M2: 2 net-new, M3: 27, M4: 5, M5: 13), each independently re-run in an isolated clone before its PR was opened, plus the one cross-lane fix. **Final confirmation, fresh clone of `main` @ `43f4185`: 2,534/2,534 pass, exit 0** — reconciles exactly against the running baseline (2,480 + 27 + 13 + 2 + 5 + 7).
+
+---
+
+## 18. Jules Sandbox Discovery Report — NOT AUTHORITATIVE, reference only
+
+Per explicit instruction: `jax1313-outlook/Jules` is a sandbox artifact, not part of Dispatch's architecture. This section records the findings so they aren't lost, not as doctrine, not as a decision, and not as a build authorization. No code merged. Nothing here overrides §0/§0b or any Dx decision.
+
+**What Jules actually is:** a single-file Flask presentation-layer prototype (`app.py` + `dispatch_spine.py`, ~620 lines, plus 5 templates) with one hardcoded `ActiveTrip` and a handful of sample cards, entirely in-memory — no persistence, no SQLite, no real Publisher/Library/Archive/Intelligence backend. It exists to visualize UI/IA concepts, not to compete with or replace real Dispatch's implementation. Its own repo (`README.md`) describes a *different, parallel* governance-document stack (`DISPATCH_CONSTITUTION_v3.md`, `MANAGER.md`, `DISPATCH_SPINE_SPECIFICATION_v1.md`, an "Intelligence Analyst" role) that uses different vocabulary than what's already locked in real Dispatch (§0, §0b, D1-D12) — that document stack is explicitly out of scope here and not adopted.
+
+**Valuable, doctrine-aligned concepts worth harvesting as design reference (not code):**
+| Concept | What it actually is in Jules | Why it's worth keeping as a reference |
+|---|---|---|
+| Consequence-level card taxonomy (0-5: Silent Log/Status/Review/Decision/Conflict/Authority) with a non-optional `"This is a recommendation only. No action is authorized. Mike decides."` closing baked into the data model | `PortalCard` dataclass, `dispatch_spine.py` | Operationalizes the "Mike decides" posture as a literal unbypassable field rather than only prose doctrine — aligns tightly with the 70-MPH-test filtering already in §0. |
+| Role-based stakeholder sanitization | One function, `sanitize_stakeholder_shipment()`, explicit allow-list per role (Broker/Shipper get route risk + BOL status; Customer gets less), explicit "exclude internal scoring/notes" boundary | Real Dispatch has no broker/shipper/customer-facing portal yet — Vision #3v2 §8/§10 asked for exactly this. The pattern (one explicit function, not ad hoc per-field filtering) is the right shape for a real version. |
+| Unified, consequence-sorted "everything Mike needs to decide" single-screen Operations view | `/operations` route pulling decision/conflict/authority/review/status cards into one feed | Real Dispatch spreads decisions across separate Publisher/Library/Archive/Pipeline/Queues/Conflicts pages — no equivalent unified feed exists yet. |
+| Route Risk data shape (`route_risk_level`/`route_risk_summary` internal vs. a sanitized public notice) | `ActiveTrip` fields + `sanitize_stakeholder_shipment()` | Not a working risk engine (hardcoded), but a clean target schema matching Vision #3v2 §10's not-yet-built Route Risk requirement. |
+| "COMI" naming and card-shape (`COMICommunicationCard`: channel/recipient_role/status) | `dispatch_spine.py` | Independently corroborates COMI Doctrine v1 (§0b) rather than conflicting with it — reinforcing signal, not new information. Real Dispatch's already-built COMI component (Freight Closeout Communications) is more behaviorally mature (real draft/review/submit/track/archive state) than this card-list mockup. |
+
+**Discarded / not harvested:**
+- All actual code — in-memory only, one hardcoded trip, no real store; not safely mergeable regardless of the explicit "do not merge" instruction.
+- "Driver-First Retrieval" here is a 3-record hardcoded search stub — real Dispatch's already-merged Load Search (SQL-backed, multi-entity) is already more capable; nothing to harvest but the naming.
+- The public marketing site (index/about/capabilities/contact) and trademark styling (™ on "Mission Visibility"/"Route Risk") — branding/marketing decisions, out of scope for the operating system itself, not adopted.
+- Jules's own parallel governance-document stack (Constitution v3, Manager, Dispatch Spine, Intelligence Analyst) — a separate architecture exploration using different vocabulary than what's locked in real Dispatch; not merged conceptually, kept fully separate.
+
+**Faster path to completion? Honest answer: not to code, but yes to design clarity** on three not-yet-built items Vision #3v2 already called for: the stakeholder/broker portal, a consequence-sorted decision feed, and Route Risk's data shape. None of Jules's code ports — real Dispatch's data model (SQLite `Load`/`BrokerContact`/settlement records, `portal/models/*.py` JSON stores) is entirely different from Jules's in-memory dataclasses. Any future build of these three items starts from scratch against real data, using Jules only as a worked visual/IA reference.
+
+**Not built this pass — this is a discovery report, not a build authorization**, per explicit instruction.
