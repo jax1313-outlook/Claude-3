@@ -496,3 +496,38 @@ Per explicit instruction: `jax1313-outlook/Jules` is a sandbox artifact, not par
 **Faster path to completion? Honest answer: not to code, but yes to design clarity** on three not-yet-built items Vision #3v2 already called for: the stakeholder/broker portal, a consequence-sorted decision feed, and Route Risk's data shape. None of Jules's code ports — real Dispatch's data model (SQLite `Load`/`BrokerContact`/settlement records, `portal/models/*.py` JSON stores) is entirely different from Jules's in-memory dataclasses. Any future build of these three items starts from scratch against real data, using Jules only as a worked visual/IA reference.
 
 **Not built this pass — this is a discovery report, not a build authorization**, per explicit instruction.
+
+---
+
+## 19. Stakeholder Portal — Build Report
+
+Authorized explicitly ("Build the stakeholder portal against real Dispatch data"), following directly from §18's discovery report. Built on branch `claude/stakeholder-portal`, PR #99, against real `main` @ `43f4185` (post-M1-M5).
+
+**What it is:** an external, read-only, non-PIN-gated view of a single load for the broker/shipper/customer chain — `GET /portal/loads/<load_id>?token=<hmac>`. Built entirely against real Dispatch's SQLite-backed data model; nothing ported from Jules.
+
+**Security model:** `dispatch/notifications.py::make_stakeholder_token()`/`verify_stakeholder_token()` — the same keyed-HMAC-SHA256 pattern already used for decision-email action links, with its own namespaced hash input (`"dispatch-stakeholder:{load_id}"` vs. `"dispatch:{load_id}:{action}"`) so a stakeholder-view token can never be replayed as a decision-action token or vice versa. `portal/app.py`'s `DISPATCH_PIN` gate exempts the whole `stakeholder` blueprint, the same way it already exempts `decisions` and the single `dispatch_api.dispatch_decision` endpoint, and for the identical reason: the recipient has no Dispatch login.
+
+**Data-shaping decisions — flagged explicitly, not silently assumed:**
+
+| Included (shared with the chain) | Excluded (internal-only, regardless of D11) |
+|---|---|
+| Load status, customer, broker/shipper, pickup/delivery location+time, equipment unit/type | Driver phone/email/license (only name shown) |
+| Milestones (event type, time, location, note) | Internal activity/comment thread |
+| Exceptions (type, severity, description, status, resolution) | `visibility.internal_note` (only `customer_note` shown) |
+| Confirmed rate, distance | Level 1 Transport's own expense breakdown, `profit`, `margin_pct` (`get_financials()`'s `summary` -- this is Level 1's P&L on the load, not a rate/fee/cost figure the chain is owed under D11) |
+| Invoice number/amount, payment status | Evidence file downloads (metadata -- type/description/capture_time -- only; no `file_path`, no download link) |
+| Evidence/POD counts, retention final status + archived date | `retention.archive_location`, `retention.financial_summary` (server filesystem path and the same internal P&L data as above) |
+
+The rate/fee/cost inclusion is a direct application of D11 (open-disclosure rule for Manufacturer -> Shipper -> Broker -> Level 1 Transport). The exclusions are **not** D11 curtaining -- none of the excluded fields are rate/fee/cost figures in the first place; they're either Level 1's own internal economics, personal contact info, or server-internal paths/threads that were never in scope for external disclosure.
+
+Evidence file downloads specifically were scoped out this pass, not overlooked: the existing internal download route (`dispatch_api.download_evidence`) is itself PIN-gated, so linking to it from a non-PIN-gated page would either be a dead link (redirects to login) or require exempting file downloads from the gate entirely -- a real security-scoping decision left for a dedicated token-scoped evidence route as a fast-follow, not decided here.
+
+**Single shared payload, not per-role payloads:** deliberately diverges from Jules's `sanitize_stakeholder_shipment(trip, role)` pattern (different data per role) -- built one shared payload instead, where role only affects greeting/labeling, because D11 already establishes no curtain is needed between these specific parties on rate/fee/cost. If a future party type needs genuinely different visibility (e.g., a party outside this disclosure chain), that would be a new, explicitly-flagged decision, not an extension of this pattern by default.
+
+**UI:** a "Stakeholder Link" control on the load detail page (`portal/templates/dispatch_detail.html`) generates the signed URL server-side (`pages.py::dispatch_detail`) and copies it to clipboard. No automatic email/COMI delivery of the link built this pass -- flagged as a fast-follow, consistent with this engagement's pattern of keeping each build narrowly scoped to what was asked.
+
+**Distinct from M5's internal read-only view:** `/search/loads/<id>` (§17, PR #96) is for Dispatch staff, PIN-gated, reachable from Load Search. `/portal/loads/<id>` is for an external party, token-gated, with no PIN/session involved at all, and a standalone template (does not extend `base.html`'s internal sidebar/nav -- none of those links are meant for an external recipient).
+
+**Tests:** new `tests/test_stakeholder_portal.py`, 17 tests -- token security (valid, wrong-load, cross-namespace replay rejection, missing, bad, nonexistent-load-404), PIN-gate bypass verified against both the `TESTING`-default gate and, separately, the *real* `DISPATCH_PIN` gate with `LOGIN_DISABLED=False` (mirroring `TestDispatchPinAuthentication`'s pattern in `test_portal.py`), correct rendering of shared data, and explicit exclusion tests for every internal-only field in the table above.
+
+**Final verification:** full suite run twice independently -- `pytest -q` (exit code 0) and `pytest --collect-only -q` (summed per-file counts) both agree: **2,551/2,551** (2,534 baseline + 17 new). PR #99 opened against `main`, CI subscribed and driving to green per standing autonomous-build posture.
