@@ -166,12 +166,17 @@ Branch: `claude/fix-deploy-docs-init-admin` (separate from the code branch, per 
 | `claude/freight-core-defect-fixes` | 9 defect fixes (§1) + 2 adapter boundaries (§4); finding #5 attempted and reverted (§1, §2) | **Merged** via PR #91 |
 | `claude/driver-load-search` | Load Search / Operational Retrieval, D6/D9 (§12) | **Merged** via PR #89 — went `behind` after #90/#92/#91 merged ahead of it, updated with the latest `main` via `update_pull_request_branch`, re-ran CI green, merged |
 | `claude/d10-email-archive-handling` | D10 Email Archive Handling (§15) | **Merged** via PR #93 — up to date with `main` at open, CI green on the first run, no `update_pull_request_branch` round needed |
+| `claude/system-keys-registry` | D4 System Keys Card registry, Lane M3 (§17) | **Merged** via PR #94 |
+| `claude/d1-status-transition-gate` | D1 status-transition gate, Lane M1 (§17) | **Merged** via PR #95 — required a mid-flight fix, see §17 |
+| `claude/load-search-readonly-detail` | Read-only Load Search detail view, Lane M5 (§17) | **Merged** via PR #96 |
+| `claude/publisher-adapter-flag-fix` | Reconciliation adapter flag correction, Lane M2 (§17) | **Merged** via PR #97 |
+| `claude/email-helper-document-generation` | Email Helper closeout-data enrichment, Lane M4 (§17) | **Merged** via PR #98 |
 
-**`main` is now at `57a7701`** (PR #88 → #90 → #92 → #91 → #89 → #93, in that order). All six branches from this engagement are now merged; none remain open.
+**`main` is now at `43f4185`** (PR #88 → #90 → #92 → #91 → #89 → #93 → #94 → #96 → #97 → #98 → #95, in that order). All eleven branches from this engagement are now merged; none remain open.
 
-**Post-merge full-suite confirmation, run directly against `main`** — twice: at `cc6c467` (after PR #89, before #93): **2,469/2,469 pass, exit 0.** Then again at `57a7701` (after #93): **2,480/2,480 pass, exit 0** — reconciles exactly (2,469 + 11 from D10, §15), confirming #93 introduced no integration issue on top of the other five merges.
+**Post-merge full-suite confirmation, run directly against `main`** at each milestone: `cc6c467` (after #89, before #93) **2,469/2,469**; `57a7701` (after #93) **2,480/2,480**; `43f4185` (after all five §17 lanes, final) **2,534/2,534 pass, exit 0** — reconciles exactly (2,480 + 27 + 13 + 2 + 5 + 7 = 2,534 across M3/M5/M2/M4/M1 respectively), confirming the full set introduced no integration issue beyond the one caught and fixed mid-merge (§17).
 
-**PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green — still never merged without that authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
+**PR policy note:** as of this pass, PRs are opened one per branch as each section completes (explicit instruction), rather than only on request as in earlier phases of this engagement. Merging into `main` now happens on explicit per-PR authorization once CI is green, without further check-ins during CI/merge itself (a later explicit instruction narrowed this further) — still never merged without that original authorization, and a green-but-`behind` PR is updated with the latest `main` and re-checked rather than force-merged.
 
 ---
 
@@ -382,3 +387,35 @@ Lanes 2-5 touch entirely disjoint files and have no dependency on each other —
 **Not on this matrix on purpose:** A2 (archive atomicity) and B1-B3 — none of them are safe or possible to just start building; each needs either your explicit go-ahead (A2, since it's core architecture) or your answer to an open question (B1-B3) before there's anything to build.
 
 **Recommendation, not a decision:** Lanes 2-5 (M2-M5) plus Lane 1 (M1) alone are ready to build in parallel right now with no further input needed from you — say the word and I'll branch and build all five concurrently, reporting back per-branch same as this session's established pattern. A1 (finding #5) is worth doing next but solo, after the M1 lane lands, not alongside it.
+
+---
+
+## 17. Parallel Build Matrix (M1-M5) — Build Report
+
+Authorized ("do it") after §16's matrix. All five lanes were dispatched as independent subagents, each cloning fresh, branching off the then-current merged `main`, and working in full isolation from this main session — a genuine parallel build, not a sequential one narrated as parallel.
+
+### A real infrastructure problem, caught and worked around
+
+Three of the five agents (M3, M4, M5) independently discovered mid-task that their initial scratch clone directory was shared with a sibling agent's concurrent, uncommitted work — each detected foreign file changes via `git status`/`git diff` before committing, and self-corrected by re-cloning into a freshly isolated path, verifying the final diff against `origin/main` contained only their own intended files before pushing. None of the five contaminated commits reached `origin`. This was independently verified from this session's side too: every branch's actual pushed diff was re-checked with `git diff main..origin/<branch> --stat` before any PR was opened, and every one came back clean and matched what its agent reported. Worth fixing at the harness level for any future multi-agent build of this shape — each parallel build lane should get an unambiguous, pre-assigned isolated working directory rather than relying on each agent to detect and route around a collision on its own.
+
+### A second real problem: agent self-reported test counts weren't always trustworthy
+
+Given the above contamination risk, no agent's own final-suite pass count was taken at face value. Every branch was independently re-verified from this session: fetched, diffed against `main` to confirm the pushed commit was clean, then run in its own fresh, dedicated clone. One agent (M1) reported two different counts from two different counting methods within its own run (a `--collect-only` tally that matched the expected number, and a raw dot-count that didn't) and explicitly flagged the discrepancy rather than picking one silently — independent re-verification confirmed the `--collect-only`-matching number was correct and the dot-count was a counting artifact (this session's own dot-counting method earlier in the engagement carries the same theoretical risk, worth remembering).
+
+### The lanes
+
+| Lane | PR | What it does | Key judgment call |
+|---|---|---|---|
+| **M1** | #95 | D1: `archive_load()` now calls `validate_status_transition()` before archiving; `cancelled -> archived` added to `_VALID_TRANSITIONS`. `add_milestone()` deliberately untouched (that's finding #5 / A1, not this). | 7 pre-existing tests that archived straight from `"created"` had their setup (not assertions) fixed to drive a valid lifecycle first. |
+| **M2** | #97 | Corrected `reconciliation/adapters/publisher_adapter.py`'s stale `is_approval_enforced=False` to `True` — a real code-path gate now exists in `publisher.py`. | Chose unconditional `True` over a per-record computation, to avoid duplicating the module's separate `would_pass_tri_department_gate()` function, which answers a genuinely different question. |
+| **M3** | #94 | Built the D4 System Keys Card registry container (`portal/models/integrations_registry.py`, 7 integration types, Settings-page UI) — no existing vendor migrated to it. | Flagged, not silently decided: credentials are stored in plaintext JSON, same pattern as every other `portal/models/` file, genuinely different from every other secret in this codebase (all env-var-based). Accepted per the repo's documented single-admin/local-only model; not encrypted. |
+| **M4** | #98 | Enriched Email Helper's drafted emails with real closeout data (pickup/delivery/rate/invoice/POD) instead of a generic placeholder. | **Flagged for your attention, not resolved:** the customer email gets the same rate/invoice figures as the broker email — in real freight brokerage, a customer typically isn't shown what the carrier was paid. Followed the task's literal scope rather than second-guessing it. Small follow-up if you want the customer version to omit `Rate:`/`Invoice #:`. |
+| **M5** | #96 | Built a genuinely read-only load detail view (`/search/loads/<load_id>`) and pointed Load Search's results at it instead of the full editable `/dispatch/<load_id>` page, closing a gap flagged but not built in the original Load Search PR (#89). | Search's separate Settlements results table still links to the editable page — scoped the fix to the Loads table specifically, flagged the Settlements table as a possible follow-up. |
+
+### A real cross-lane conflict, found during merge and fixed
+
+M1 (#95) and M5 (#96) were both built independently against the same starting `main` and were individually correct and fully green in isolation. Once #96 merged first and #95's branch was updated to include it (routine, per the merge sequence), CI on #95 failed: M5's `test_renders_retention` archived a freshly created load straight from `"created"` status — exactly the pattern D1 (#95) exists to reject, and a pattern M1's own PR had already fixed in 7 *other* pre-existing tests, but couldn't have known about this *new* one written in a sibling, isolated branch. This is the one genuine integration issue this batch produced, and it's structural, not a mistake by either agent — two correct, independently-tested changes that only conflict once combined. Fixed directly on #95 (since it was this session's own PR): drove the test's load through a valid lifecycle before archiving, same pattern already used elsewhere, no assertion changed. Full suite re-confirmed green (2,527/2,527) before re-pushing.
+
+### Tests and final verification
+
+54 new tests across the five lanes (M1: 7, M2: 2 net-new, M3: 27, M4: 5, M5: 13), each independently re-run in an isolated clone before its PR was opened, plus the one cross-lane fix. **Final confirmation, fresh clone of `main` @ `43f4185`: 2,534/2,534 pass, exit 0** — reconciles exactly against the running baseline (2,480 + 27 + 13 + 2 + 5 + 7).
