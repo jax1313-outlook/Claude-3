@@ -530,4 +530,39 @@ Evidence file downloads specifically were scoped out this pass, not overlooked: 
 
 **Tests:** new `tests/test_stakeholder_portal.py`, 17 tests -- token security (valid, wrong-load, cross-namespace replay rejection, missing, bad, nonexistent-load-404), PIN-gate bypass verified against both the `TESTING`-default gate and, separately, the *real* `DISPATCH_PIN` gate with `LOGIN_DISABLED=False` (mirroring `TestDispatchPinAuthentication`'s pattern in `test_portal.py`), correct rendering of shared data, and explicit exclusion tests for every internal-only field in the table above.
 
-**Final verification:** full suite run twice independently -- `pytest -q` (exit code 0) and `pytest --collect-only -q` (summed per-file counts) both agree: **2,551/2,551** (2,534 baseline + 17 new). PR #99 opened against `main`, CI subscribed and driving to green per standing autonomous-build posture.
+**Final verification:** full suite run twice independently -- `pytest -q` (exit code 0) and `pytest --collect-only -q` (summed per-file counts) both agree: **2,551/2,551** (2,534 baseline + 17 new). PR #99 opened against `main`, CI subscribed and driving to green per standing autonomous-build posture. **Merged** (commit `20f6888`).
+
+---
+
+## 20. Operations Feed — Build Report
+
+Authorized explicitly ("Build the consequence-sorted decision feed next"), the second of the three not-yet-built items §18 flagged. Built on branch `claude/operations-feed`, PR #100, against real `main` @ `20f6888` (post-stakeholder-portal).
+
+**What it is:** `GET /operations` -- one screen, highest-consequence-first, aggregating every open item from eight already-existing decision surfaces that were previously only visible on their own separate pages: Publisher, Conflict Notices, CIN-Lite Pipeline (pending contract decisions), Dispatch Exceptions, Settlements (disputed/overdue), stalled loads, Queues (human review / deep analysis), and Library (missing company assets).
+
+**No new business logic, no new state:** `portal/models/operations_feed.py::build_feed()` is purely a reader -- it calls each subsystem's own existing listing function (`publisher.get_queue()`, `conflict.get_unresolved()`, `cin_lite.pending.list_pending()`, `dispatch_svc.list_exceptions()`, `dispatch_svc.list_settlements()`, `dispatch_svc.check_stalled_loads()`, `cin_lite.pipeline.routing_history()`, `library.get_missing_company_assets()`) and normalizes each result into one shared card shape. Resolving or acting on any item still happens on that item's own existing page (the card's `url` links straight there) -- this is a read-only view, not a new action surface, and owns no data of its own.
+
+**Consequence taxonomy, reused not copied:** the 0-5 (Silent Log/Status/Review/Decision/Conflict/Authority) scale is the same one identified as valuable in §18's Jules review, reused here specifically because it operationalizes Driver-First Doctrine's "Mike decides" posture (§0) as a literal field rather than only prose: every card at level 3 (Decision) or above carries a non-optional `closing` string, *"This is a recommendation only. No action is authorized. Mike decides."* No Jules code was ported -- every card is built from real Dispatch/CIN-Lite data via real service functions.
+
+**Per-source level mapping -- each a judgment call, flagged in the module's own docstring/comments, not silently decided:**
+
+| Source | Level | Reasoning |
+|---|---|---|
+| Publisher actions not yet APPROVED/ARCHIVED | 5 Authority | Matches the same non-self-approval governance gate Publisher already enforces (`update_action_status`) -- the highest-stakes single action type in the system |
+| Conflict Notices | 4/3/2 by severity (critical/warning/info) | Capped at 2 (Review) when `human_decision_required=False`, since that field literally states no decision is required |
+| CIN-Lite pending contract decisions | 4/3 by `decision.priority` (high/critical vs. else) | No persisted timestamp exists in `pending.list_pending()`'s stored shape, so these sort last within their level |
+| Open Dispatch exceptions (open + investigating) | 4/3/2 by severity | Same severity scaling as Conflict Notices, for consistency |
+| Disputed settlements | 4 Conflict | The word "disputed" already implies contention |
+| Overdue settlements | 3 Decision | Needs a follow-up decision (chase payment, escalate, write off) but isn't yet contentious |
+| Stalled loads | 2 Review | Matches `notify_stalled()`'s own existing `flag_review` recommended action |
+| Human review queue items | 2 Review | Matches the existing `/queues` page's own naming |
+| Deep analysis queue items | 1 Status | Lower urgency than a review item -- research, not a pending call |
+| Missing Library company assets | 1 Status | A gap, not yet blocking anything |
+
+**UI:** a new "Operations" nav link, placed first in the sidebar (`base.html`) as the natural daily entry point -- level-count chips at the top, then cards sorted highest-consequence first and most-recent-first within a level (cards with no timestamp sort last within their level, not first).
+
+**Tests:** new `tests/test_operations_feed.py`, 25 tests -- per-source level mapping, exclusion of resolved/closed/paid/approved items from every one of the eight sources, the closing statement appearing on level-3+ cards and *only* those, sort order (including a real bug caught by the test itself: `conflict.py`'s `_utc_now()` has only 1-second resolution, so two notices created in the same test tie on timestamp -- fixed by monkeypatching the clock rather than relying on wall-clock ordering), and that `/operations` renders the feed end to end.
+
+**Final verification:** full suite run twice independently -- `pytest -q` (exit code 0) and `pytest --collect-only -q` (summed per-file counts) both agree: **2,576/2,576** (2,551 baseline + 25 new). PR #100 opened against `main`, all 6 CI checks (py3.11/3.12/3.13, both push- and pull_request-triggered runs) green, `mergeable_state: clean`. **Merged** (commit `a115162`).
+
+One item from §18's three-item list remains: Route Risk's data shape (not yet requested).
