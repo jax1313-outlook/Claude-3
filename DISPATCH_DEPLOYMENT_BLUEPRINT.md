@@ -606,3 +606,51 @@ Authorized explicitly via a detailed 8-point IMPLEMENTATION TARGET: "Create Driv
 **Tests:** new `tests/test_driver_pin_registry.py`, 51 tests -- PIN Card CRUD and validation, hash-stripping on every read path (`pin_hash`/`recovery_word_hash` never leave the model), phone+PIN login including lockout and its reset on success, Active/Inactive status control and its independence from driver roster status, Recovery Word validation and self-service reset, that a driver session cannot reach internal Authority pages under the real `DISPATCH_PIN` gate, the dashboard's COMI/Route-Risk/contact lookups, the five admin API endpoints, and the Library page section.
 
 **Final verification:** full suite run twice independently -- `pytest -q` (exit code 0) and `pytest --collect-only -q` both agree: **2,627/2,627** (2,576 baseline + 51 new). The `--collect-only` check caught a real miscount during verification: an eyeballed dot-count of the new file's own test run misread as 53, corrected to the true 51 by counting both the file in isolation and the whole-suite delta the same way -- another instance of the never-trust-a-single-count discipline from §17 paying off. PR #101 opened against `main`, CI subscribed and driving to green per standing autonomous-build posture.
+
+---
+
+## 22. Build-Status Report + Batch 1 — Matrix Build Report
+
+Two connected pieces, both explicitly requested: a full inspect-only status/work-queue report ("do not start building yet"), then explicit approval to build its Batch 1 (Workstreams A-F) in **Workstream PR Mode + Matrix Build Mode** per §0c (Dispatch Momentum Doctrine).
+
+**The status report itself** (not reproduced here -- delivered as a structured chat report, not written to this file) inventoried every merged capability against the blueprint's own Decision Register and current repo state (verified fresh: `main` @ `074ac79`, 2,627/2,627 passing, confirmed via both `pytest -q` and `pytest --collect-only -q`), classified partial/not-started capabilities, and produced a prioritized 20-item build queue grouped into six Workstream PRs (A-F) -- all buildable without a new Mike decision, all additively wiring already-real backend data across the Stakeholder/Driver/internal Portals.
+
+### Matrix Build execution
+
+Five lanes (A-E) were dispatched as true concurrent background subagents -- each cloning into its own isolated directory, building its full workstream (backend helper + wiring + tests), independently verifying its own full-suite result, and pushing without opening a PR. This session then independently re-verified every lane itself (diff + full suite, in the agent's own clone -- never trusting a self-report at face value, same discipline as §17's M1-M5 batch) before opening any PR.
+
+**The predictable cost of true concurrency:** all five lanes were scoped (correctly, per the approved plan) around the same small set of shared integration points -- `dispatch/services.py::build_stakeholder_view()`'s return dict, `driver_portal.py::driver_home()`'s per-load-card dict, and both `stakeholder_view.html` and `driver_home.html`. Building five lanes in parallel against the same starting `main` guarantees each one's PR conflicts with whichever lane merges first, and the next, and so on -- this is not a mistake in the plan, it's the direct tradeoff of "build concurrently, don't artificially serialize." Every conflict encountered was resolved the same way: fetch the newly-advanced `main`, merge, resolve (every single one was a simple two-way *combine* -- both lanes' additions kept, nothing logically contradictory -- since each lane touched a different dict key or template row), re-run the full suite fresh, push, re-open for merge. Six total conflict-resolution passes were needed across the batch (B×2, D×2, E×3, one of E's requiring an extra remote-reconciliation step after GitHub's own auto-update-branch feature raced a manual resolution) -- all resolved directly, none needed to fall back to a human decision.
+
+**One real, unrelated CI failure caught and fixed:** Lane D's CI hit a genuinely flaky pre-existing test, `tests/test_portal.py::test_pin_stored_as_hash_not_plaintext`, which asserted a PIN string never appears anywhere in the raw `identity.json` dump -- but a werkzeug password hash is effectively random hex, and a 4-character PIN has a real (if small) chance of appearing as a coincidental substring of one, which is exactly what happened in that CI run. Root-caused (not just re-run), fixed to assert the actual security property (no plaintext `"pin"` field; the hash genuinely verifies via `check_password_hash`), and confirmed stable across 8 repeated runs against fresh random salts before pushing -- unrelated to any of Batch 1's own scope, but blocking a Batch 1 PR's CI, so fixed directly per the drive-to-green posture rather than left for later.
+
+### The six Workstream PRs
+
+| PR | Workstream | What it added |
+|---|---|---|
+| #102 | A: Mission Visibility Foundation | `get_mission_visibility(load_id)` -- centralizes the previously-scattered `visibility` table read; surfaces `next_expected_milestone` on Stakeholder Portal, Driver Portal, and Operations Feed card summaries. |
+| #103 | B: COMI Status Everywhere | `get_comi_status(load_id)` -- shared status-glance wrapper around `email_helper.get_package()`; new Operations Feed source (`_comi_cards()`, Review-tier, disappears on SUBMITTED); Stakeholder Portal now shows communications status (never draft content). |
+| #104 | C: Stakeholder Portal API Contract | Token-scoped evidence download (`GET /portal/loads/<id>/evidence/<id>?token=`) with an adversarially-verified IDOR check (temporarily removed, confirmed the test failed/leaked, restored, confirmed it passed); `?format=json` contract variant; opt-in stakeholder-link inclusion in Email Helper drafts (server-side, stays inside the existing human-review gate). |
+| #105 | D: Contact Routing Foundation | `get_load_contacts(load_id)` -- centralizes broker-contact lookup + dispatch email; new Stakeholder Portal Contact card; Driver Portal's per-load lookup refactored onto the shared helper plus a deduplicated cross-load broker summary. |
+| #106 | E: Publisher Packet Status Visibility | `get_publisher_status(load_id)` -- reuses the pre-existing `f"LOAD-{load_id}"` synthetic sandbox_id convention (found via the search the task itself specified, at `dispatch_api.py::end_load()`, not reinvented); reports true status (including APPROVED/ARCHIVED, deliberately not hidden) on Stakeholder Portal and Driver Portal. |
+| #107 | F: Archive Reference Wiring + Batch Close-out | `/archive` now cross-references each retention record's Email Cluster document count and a one-click Stakeholder Link copy; Stakeholder Portal's Archive card gets plain-English "what archived means" copy; a regression test locking in that an APPROVED Publisher action is correctly hidden from Operations Feed *and* correctly still shown as "finalized" on Stakeholder/Driver Portal -- two deliberately different behaviors for the same state, now protected against a future change accidentally collapsing them into one. |
+
+### The four new shared helpers -- the batch's real deliverable
+
+The concrete, durable output of this batch is four small, reused-everywhere functions in `dispatch/services.py`, each replacing what was previously either missing or duplicated ad hoc per-portal:
+
+- `get_mission_visibility(load_id)`
+- `get_comi_status(load_id)`
+- `get_load_contacts(load_id)`
+- `get_publisher_status(load_id)`
+
+Each is now the single source of truth for its concept across the internal Portal, the external Stakeholder Portal, the Driver Portal, and Operations Feed -- the "connect portals to real backend data" goal named in the original status report's Recommended Next 20, delivered as shared plumbing rather than four separate one-off integrations.
+
+### Final verification
+
+Full suite run fresh against the fully-merged Batch 1 `main`: **2,698/2,698 passing** (2,627 pre-batch baseline + 71 new: A=8, B=13, C=16, D=12, E=12, F=10), confirmed via `pytest -q` (exit 0) and independently via `pytest --collect-only -q` summed per-file count -- both agree. All six PRs merged (#102-#107).
+
+### Applying §0c during this batch
+
+No idle CI-watching between lane dispatch and PR opening -- all five lanes were launched in one concurrent batch, each independently re-verified and PR'd the moment its own build finished, without waiting on the others. The unavoidable exception (explicitly anticipated in §0c's own text) was the merge-conflict resolution sequence itself: six real conflicts, each requiring a fetch-merge-resolve-retest-push cycle before the *next* PR in the chain could even be attempted, since GitHub's branch-protection rules require a PR's branch to be current with `main` before merging. That sequencing is git's own constraint, not idle CI-watching -- each cycle did real work (conflict resolution, a full-suite re-run) rather than passively polling a pending check.
+
+One open item remains exactly where §21 left it: **Route Risk's live data source** is still an unmade decision (internal-signals-only vs. an external API), untouched by this batch. Recommended Batch 2 candidates are the ones already sketched in the original status report's Batch 2 table (§21-adjacent, delivered as part of the chat report): Publisher Auto-Trigger v1, further Archive cross-referencing, Route Risk lookup history (still stub-only), and Library gap-visibility parity across sections.
