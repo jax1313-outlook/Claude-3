@@ -72,7 +72,21 @@ Per explicit instruction, this is a report, not an action. Grepped the full Disp
 
 **What a full rename would actually require, if ever directed:** (1) rename `portal/models/email_helper.py` → something like `portal/models/comi_freight_closeout.py` or a general `portal/models/comi.py`, updating both importers (`dispatch_api.py`, `pages.py`); (2) decide whether to change the public API routes (`/email-package/...`) — a breaking change to anything that already calls them, versus keeping the URL stable while renaming only internals; (3) rename the persisted JSON storage file (currently `email_packages.json`, via `get_data_dir()`) — a real data-migration question if any live packages already exist under that filename, though at this stage of the project that risk is low since this hasn't run in production yet; (4) update template section headings, field IDs, and JS function names in two templates; (5) rename `tests/test_email_helper.py` and update its internal naming throughout. None of this was done — this row exists so a future rename decision starts from an accurate map, not a guess.
 
-## 1. Closed Critical Gaps
+## 0c. Dispatch Momentum Doctrine (Constitutional — LOCKED)
+
+Issued directly, in full caps, as a named doctrine — recorded here the same way COMI Doctrine v1 (§0b) was, on the same equal-constitutional-priority footing as §0/§0b: governs interpretation of every future build/PR cycle, not just the one it arrived during.
+
+**The rule:** CI waiting is not productive work. After opening a PR:
+1. Record PR status (number, URL, CI trigger state).
+2. Record test status (local full-suite result, pre-push).
+3. Record merge risks (anything flagged, anything ambiguous).
+4. Move immediately to the next approved workstream.
+
+Never idle watching CI. Never spend more than 5 minutes actively monitoring a single PR's CI run. Continue advancing the build matrix unless an authority-level decision is genuinely required to proceed.
+
+**How this changes the operating pattern from §17/§19/§20/§21's precedent:** those build reports show a "subscribe → wait a few minutes → check → merge → report" loop running inline, sometimes with a short `send_later` check-in. That pattern is now retired for the waiting part specifically — subscribing to PR activity (so CI failures/reviews still reach this session asynchronously) stays correct and necessary, but sitting on a 5-minute timer with nothing else in flight does not. Going forward: open the PR, write down the three things above, and either start the next approved unit of work in the same turn or, if nothing is pre-approved, say so and ask rather than idling. CI results, review comments, and merge-conflict notices still arrive as PR-activity events per the standing subscription — they get handled and merged when they land, not waited for.
+
+**"Unless an authority-level decision is required"** — this doesn't relax the standing discipline (established throughout this engagement, well before this doctrine) of flagging genuine architecture/business/security judgment calls in writing rather than silently deciding them. It means: don't let *CI's clock* be the reason work stalls. A real open decision (e.g., Route Risk's live data source, still unresolved as of §21) is still a legitimate reason to pause and ask — idling on a green-pending CI run is not.
 
 Branch: `claude/freight-core-defect-fixes`. All fixes have dedicated tests (`tests/test_deployment_hardening_fixes.py`) plus a full-suite regression run (§8).
 
